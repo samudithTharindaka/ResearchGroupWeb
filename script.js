@@ -126,7 +126,7 @@
     $("#empty-documents").hidden = documents.length !== 0;
     $("#document-grid").innerHTML = documents.map(item => {
       const file = safeLink(item.file);
-      return `<article class="document-card ${file ? "" : "pending"}"><div class="document-card-top"><span class="file-icon">${icon("file")}</span><span class="document-category">${escapeHTML(item.category)}</span></div><div class="document-card-body"><h3>${escapeHTML(item.title)}</h3><p>${escapeHTML(item.subtitle)}</p>${item.author ? `<div class="document-author">${escapeHTML(item.author)}</div>` : ""}</div><div class="document-card-bottom"><span>${escapeHTML(item.date || "To be added")}</span>${file ? `<a href="${file}" download aria-label="Download ${escapeHTML(item.title)} PDF">Download PDF ${icon("down")}</a>` : '<span class="coming-soon">Coming soon</span>'}</div></article>`;
+      return `<article class="document-card ${file ? "" : "pending"}"><div class="document-card-top"><span class="file-icon">${icon("file")}</span><span class="document-category">${escapeHTML(item.category)}</span></div><div class="document-card-body"><h3>${escapeHTML(item.title)}</h3><p>${escapeHTML(item.subtitle)}</p>${item.author ? `<div class="document-author">${escapeHTML(item.author)}</div>` : ""}</div><div class="document-card-bottom"><span>${escapeHTML(item.date || "To be added")}</span>${file ? `<a href="${file}" target="_blank" rel="noopener" aria-label="${escapeHTML(item.linkLabel || "View PDF")}: ${escapeHTML(item.title)} (opens in a new tab)">${escapeHTML(item.linkLabel || "View PDF")} ${icon("up-right")}</a>` : '<span class="coming-soon">Coming soon</span>'}</div></article>`;
     }).join("");
   };
   renderDocuments();
@@ -145,7 +145,7 @@
     return `<article class="presentation-card ${file ? "" : "pending"}"><div class="presentation-cover" aria-hidden="true"><small>R26-SE-026 / RESEARCH SERIES ${String(index + 1).padStart(2, "0")}</small><strong>kaduna<span>.lk</span></strong><span class="slide-type">${escapeHTML(item.title)}</span>${item.slides ? `<span class="slide-count">${item.slides} SLIDES</span>` : ""}</div><div class="presentation-info"><h4>${escapeHTML(item.title)}</h4><p>${escapeHTML(item.subtitle)}</p><div class="document-card-bottom"><span>${escapeHTML(item.date || "To be added")}</span>${file ? `<a href="${file}" target="_blank" rel="noopener" aria-label="View ${escapeHTML(item.title)} slides">View slides ${icon("up-right")}</a>` : '<span class="coming-soon">Coming soon</span>'}</div></div></article>`;
   }).join("");
 
-  $("#team-grid").innerHTML = content.team.map(person => `<article class="team-card"><div class="team-photo"><img src="${safeLink(person.photo)}" alt="${escapeHTML(person.name)}" loading="lazy" width="460" height="550"><span>RESEARCHER / ${escapeHTML(person.number)}</span></div><h3>${escapeHTML(person.name)}</h3><div class="team-id">${escapeHTML(person.id)}</div><p>${escapeHTML(person.component)}</p>${emailLink(person.email) ? `<a class="team-contact" href="${emailLink(person.email)}">${escapeHTML(person.email)} ↗</a>` : '<span class="team-contact">Contact details coming soon</span>'}</article>`).join("");
+  $("#team-grid").innerHTML = content.team.map(person => `<article class="team-card"><div class="team-photo"><img src="${safeLink(person.photo)}" alt="${escapeHTML(person.name)}" loading="lazy" width="460" height="550"><span>RESEARCHER / ${escapeHTML(person.number)}</span></div><h3>${escapeHTML(person.name)}</h3><div class="team-id">${escapeHTML(person.id)}</div><p>${escapeHTML(person.component)}</p>${emailLink(person.email) ? `<a class="team-contact" href="${emailLink(person.email)}">${escapeHTML(person.email)} ↗</a>` : '<span class="team-contact">Contact details coming soon</span>'}<div class="team-links">${[["GitHub", person.github], ["LinkedIn", person.linkedin]].filter(([, url]) => safeLink(url)).map(([label, url]) => `<a href="${safeLink(url)}" target="_blank" rel="noopener">${label} ↗</a>`).join("")}</div></article>`).join("");
 
   const menuToggle = $(".menu-toggle");
   const navigation = $("#main-nav");
@@ -196,11 +196,38 @@
     $("#contact-action-label").textContent = "Open email draft";
     $("#form-note").textContent = "Opens a draft in your email app. You review and send it yourself. This website does not store your information.";
   }
+  if (content.web3formsKey) {
+    $("#contact-action-label").textContent = "Send message";
+    $("#form-note").textContent = "Your message is emailed directly to the Kaduna.lk research team.";
+  }
   $("#contact-form").addEventListener("submit", async event => {
     event.preventDefault();
-    const values = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const values = new FormData(form);
     const subject = `Kaduna.lk research enquiry: ${values.get("interest")}`;
     const body = `Hello Kaduna.lk research team,\n\n${String(values.get("message")).trim()}\n\nName: ${String(values.get("name")).trim()}\nEmail: ${String(values.get("email")).trim()}\nArea of interest: ${values.get("interest")}\n\nProject: R26-SE-026`;
+    if (content.web3formsKey) {
+      const button = $("button[type=submit]", form);
+      button.disabled = true;
+      $("#form-feedback").textContent = "Sending…";
+      try {
+        const response = await fetch("https://api.web3forms.com/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ access_key: content.web3formsKey, subject, from_name: "Kaduna.lk website", name: values.get("name"), email: values.get("email"), replyto: values.get("email"), interest: values.get("interest"), message: values.get("message"), botcheck: values.get("botcheck") ? true : "" })
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+        form.reset();
+        $("#form-feedback").textContent = "Thank you. Your message has been sent to the Kaduna.lk team.";
+        return;
+      } catch {
+        $("#form-feedback").textContent = contactLink ? "The message could not be sent. Opening an email draft instead." : "The message could not be sent. Please try again later.";
+        if (!contactLink) return;
+      } finally {
+        button.disabled = false;
+      }
+    }
     if (contactLink) {
       location.href = `${contactLink}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       $("#form-feedback").textContent = "An email draft has been requested in your email app. Review it before sending.";
